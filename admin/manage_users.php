@@ -212,9 +212,6 @@ if (isset($_GET['ajax_m']) || isset($_GET['ajax_s'])) {
             color: var(--text-main); transition: var(--transition); letter-spacing: -0.01em;
         }
 
-        /* MODAL FIX: Prevent modals from showing up as block by default */
-        .modal:not(.show) { display: none !important; }
-
         #sidebar { width: var(--sidebar-width); height: 100vh; position: fixed; left: 0; top: 0; z-index: 1100; transition: var(--transition); }
         #main { margin-left: var(--sidebar-width); transition: var(--transition); min-height: 100vh; padding: 2rem; }
         
@@ -226,6 +223,15 @@ if (isset($_GET['ajax_m']) || isset($_GET['ajax_s'])) {
             #sidebar { left: calc(var(--sidebar-width) * -1); }
             #sidebar.show { left: 0; }
         }
+
+        /* --- FIX FOR MODAL VISIBILITY --- */
+        .modal {
+            z-index: 1150; /* Higher than the sidebar's 1100 */
+        }
+        .modal-backdrop {
+            z-index: 1140; /* Higher than normal, but below the modal */
+        }
+        /* --- END FIX --- */
     </style>
 </head>
 <body class="<?= isset($_COOKIE['theme']) && $_COOKIE['theme'] == 'dark' ? 'dark-mode-active' : '' ?>">
@@ -266,35 +272,39 @@ if (isset($_GET['ajax_m']) || isset($_GET['ajax_s'])) {
                     <tr><th>Name</th><th>Email</th><th class="text-center">QR Pass</th><th>Status</th><th>Duration</th></tr>
                 </thead>
                 <tbody>
-                    <?php foreach($members as $m): 
-                        $is_active = ($m['status'] === 'active');
-                        $qr_data = $m['qr_code'] ?: $m['id'];
-                    ?>
-                    <tr>
-                        <td class="fw-bold"><?= htmlspecialchars($m['full_name']) ?></td>
-                        <td style="font-family: monospace;"><?= maskEmailPHP($m['email']) ?></td>
-                        <td class="text-center">
-                            <button class="btn btn-sm btn-outline-dark border-0" onclick="viewQR('<?= $qr_data ?>','<?= addslashes($m['full_name']) ?>')">
-                                <i class="bi bi-qr-code fs-5"></i>
-                            </button>
-                        </td>
-                        <td><span class="badge <?= $is_active?'bg-success-subtle text-success':'bg-danger-subtle text-danger' ?> border px-3"><?= $is_active?'Active':'Inactive' ?></span></td>
-                        <td>
-                            <?php if (!$is_active): ?>
-                                <div class="d-flex gap-2">
-                                    <select class="form-select form-select-sm rate-select" style="width: 130px;"><option value="400">Student (400)</option><option value="500" selected>Regular (500)</option></select>
-                                    <button class="btn btn-dark btn-sm fw-bold" onclick="pay(<?= $m['id'] ?>, this)">PAY</button>
-                                </div>
-                            <?php else: ?>
-                                <small class="fw-bold text-success">Until: <?= date('M d, Y', strtotime($m['latest_expiry'])) ?></small>
-                            <?php endif; ?>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
+                    <?php if(empty($members)): ?>
+                        <tr><td colspan="5" class="text-center text-muted py-4">No members found.</td></tr>
+                    <?php else: ?>
+                        <?php foreach($members as $m): 
+                            $is_active = ($m['status'] === 'active');
+                            $qr_data = $m['qr_code'] ?: $m['id'];
+                        ?>
+                        <tr>
+                            <td class="fw-bold"><?= htmlspecialchars($m['full_name']) ?></td>
+                            <td style="font-family: monospace;"><?= maskEmailPHP($m['email']) ?></td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-outline-dark border-0" onclick="viewQR('<?= $qr_data ?>','<?= addslashes($m['full_name']) ?>')">
+                                    <i class="bi bi-qr-code fs-5"></i>
+                                </button>
+                            </td>
+                            <td><span class="badge <?= $is_active?'bg-success-subtle text-success':'bg-danger-subtle text-danger' ?> border px-3"><?= $is_active?'Active':'Inactive' ?></span></td>
+                            <td>
+                                <?php if (!$is_active): ?>
+                                    <div class="d-flex gap-2">
+                                        <select class="form-select form-select-sm rate-select" style="width: 130px;"><option value="400">Student (400)</option><option value="500" selected>Regular (500)</option></select>
+                                        <button class="btn btn-dark btn-sm fw-bold" onclick="pay(<?= $m['id'] ?>, this)">PAY</button>
+                                    </div>
+                                <?php else: ?>
+                                    <small class="fw-bold text-success">Until: <?= date('M d, Y', strtotime($m['latest_expiry'])) ?></small>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                 </tbody>
             </table>
         </div>
-        <div id="mPagination" class="mt-3"><?php /* Pagination logic renders here */ ?></div>
+        <div id="mPagination" class="mt-3"><?php /* Pagination rendered by JS */ ?></div>
     </div>
 
     <!-- STAFF TABLE -->
@@ -307,26 +317,31 @@ if (isset($_GET['ajax_m']) || isset($_GET['ajax_s'])) {
             <table class="table align-middle" id="sTable">
                 <thead><tr><th>Name</th><th>Email</th><th class="text-end">Actions</th></tr></thead>
                 <tbody>
-                    <?php foreach($staffs as $s): ?>
-                    <tr>
-                        <td class="fw-bold"><?= htmlspecialchars($s['full_name']) ?></td>
-                        <td><?= maskEmailPHP($s['email']) ?></td>
-                        <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary border-0 me-2" onclick="editUser(<?= $s['id'] ?>,'<?= addslashes($s['full_name']) ?>','<?= addslashes($s['email']) ?>','staff','<?= $s['status'] ?>')"><i class="bi bi-pencil-square"></i></button>
-                            <button class="btn btn-sm btn-outline-danger border-0" onclick="delUser(<?= $s['id'] ?>)"><i class="bi bi-trash3"></i></button>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
+                    <?php if(empty($staffs)): ?>
+                        <tr><td colspan="3" class="text-center text-muted py-4">No staff found.</td></tr>
+                    <?php else: ?>
+                        <?php foreach($staffs as $s): ?>
+                        <tr>
+                            <td class="fw-bold"><?= htmlspecialchars($s['full_name']) ?></td>
+                            <td><?= maskEmailPHP($s['email']) ?></td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-primary border-0 me-2" onclick="editUser(<?= $s['id'] ?>,'<?= addslashes($s['full_name']) ?>','<?= addslashes($s['email']) ?>','staff','<?= $s['status'] ?>')"><i class="bi bi-pencil-square"></i></button>
+                                <button class="btn btn-sm btn-outline-danger border-0" onclick="delUser(<?= $s['id'] ?>)"><i class="bi bi-trash3"></i></button>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                 </tbody>
             </table>
         </div>
+        <div id="sPagination" class="mt-3"><?php /* Pagination rendered by JS */ ?></div>
     </div>
 </div>
 
 <!-- Add/Edit User Modal -->
 <div class="modal fade" id="userModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content border-0 p-4 shadow">
+    <div class="modal-content border-0 p-4 shadow-lg">
       <div class="modal-header border-0 pb-0">
         <h5 class="modal-title fw-bold" id="modalTitle">User Details</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -340,7 +355,7 @@ if (isset($_GET['ajax_m']) || isset($_GET['ajax_s'])) {
             <label class="small fw-bold">Password *</label>
             <input type="password" id="uPass" class="form-control" placeholder="Min 8 characters">
         </div>
-        <button class="btn btn-danger w-100 fw-bold py-3 shadow-sm" id="saveUserBtn">Save Changes</button>
+        <button class="btn btn-danger w-100 fw-bold py-2" id="saveUserBtn">Save Changes</button>
       </div>
     </div>
   </div>
@@ -368,7 +383,7 @@ if (isset($_GET['ajax_m']) || isset($_GET['ajax_s'])) {
     let uM, qM;
 
     $(document).ready(function() {
-        // Correctly initialize Bootstrap Modal instances once
+        // Correctly initialize Bootstrap Modal instances
         uM = new bootstrap.Modal(document.getElementById('userModal'));
         qM = new bootstrap.Modal(document.getElementById('qrModal'));
     });
@@ -386,62 +401,100 @@ if (isset($_GET['ajax_m']) || isset($_GET['ajax_s'])) {
     }
 
     function openAddModal(r) { 
-        $('#uId').val(''); $('#uRole').val(r); $('#uName,#uEmail,#uPass').val('');
-        $('#pGrp').show(); $('#sGrp').hide(); $('#modalTitle').text('New ' + r.toUpperCase());
-        $('#saveUserBtn').off().click(saveCreate); 
+        $('#userModal form').trigger('reset'); // Reset form fields
+        $('#uId').val(''); 
+        $('#uRole').val(r);
+        $('#pGrp').show(); 
+        $('#sGrp').hide(); 
+        $('#modalTitle').text('New ' + r.charAt(0).toUpperCase() + r.slice(1));
+        $('#saveUserBtn').off('click').on('click', saveCreate); 
         uM.show(); 
     }
     
     function editUser(id,n,e,r,s) { 
-        $('#uId').val(id); $('#uRole').val(r); $('#uName').val(n); $('#uEmail').val(e); $('#uStatus').val(s);
-        $('#pGrp').hide(); $('#sGrp').show(); 
-        $('#modalTitle').text('Edit ' + r.toUpperCase());
-        $('#saveUserBtn').off().click(saveUpdate); 
+        $('#userModal form').trigger('reset');
+        $('#uId').val(id); 
+        $('#uRole').val(r); 
+        $('#uName').val(n); 
+        $('#uEmail').val(e); 
+        $('#uStatus').val(s);
+        $('#pGrp').hide(); 
+        $('#sGrp').show(); 
+        $('#modalTitle').text('Edit ' + r.charAt(0).toUpperCase() + r.slice(1));
+        $('#saveUserBtn').off('click').on('click', saveUpdate); 
         uM.show(); 
     }
 
     function saveCreate() {
         const data = { action:'create', full_name:$('#uName').val(), email:$('#uEmail').val(), password:$('#uPass').val(), role:$('#uRole').val() };
         $.post('admin_user_actions.php', data, (res) => { 
-            if(res.status==='success') location.reload(); else alert(res.message); 
+            if(res.status==='success') { location.reload(); } else { alert(res.message); }
         }, 'json');
     }
 
     function saveUpdate() {
         const data = { action:'update', id:$('#uId').val(), full_name:$('#uName').val(), email:$('#uEmail').val(), status:$('#uStatus').val() };
         $.post('admin_user_actions.php', data, (res) => { 
-            if(res.status==='success') location.reload(); else alert(res.message); 
+            if(res.status==='success') { location.reload(); } else { alert(res.message); }
         }, 'json');
     }
 
     function pay(id, btn) { 
         const amount = $(btn).siblings('.rate-select').val();
-        if(!confirm('Confirm payment?')) return;
+        if(!confirm('Confirm payment of ' + amount + '?')) return;
         $(btn).prop('disabled', true).text('...'); 
         $.post('register_payment.php', { user_id: id, amount: amount, duration: 1 }, (res) => {
-            if(res.status==='success') location.reload(); else { alert(res.message); $(btn).prop('disabled', false).text('PAY'); }
+            if(res.status==='success') {
+                location.reload();
+            } else { 
+                alert(res.message); 
+                $(btn).prop('disabled', false).text('PAY'); 
+            }
         }, 'json'); 
     }
 
-    function delUser(id) { if(confirm('Delete user permanently?')) $.post('admin_user_actions.php', { action: 'delete', id: id }, () => location.reload()); }
+    function delUser(id) { 
+        if(confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+            $.post('admin_user_actions.php', { action: 'delete', id: id }, () => location.reload()); 
+        }
+    }
     
-    // Live Search Logic
-    let mTimer;
-    $('#mSearch').on('keyup', function() {
-        clearTimeout(mTimer);
-        const v = $(this).val().trim();
-        mTimer = setTimeout(() => {
+    let searchTimer;
+    function performSearch(tableType) {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            const searchInput = (tableType === 'member') ? $('#mSearch') : $('#sSearch');
+            const searchValue = searchInput.val().trim();
             const url = new URL(window.location.href);
-            url.searchParams.set('m_search', v);
-            url.searchParams.set('ajax_m', '1');
-            $.get(url.toString(), function(res) {
-                $('#mTable tbody').html(res.rows);
-                $('#mPagination').html(res.pagination);
-            }, 'json');
-        }, 300);
-    });
+            
+            if (tableType === 'member') {
+                url.searchParams.set('m_search', searchValue);
+                url.searchParams.set('ajax_m', '1');
+            } else {
+                url.searchParams.set('s_search', searchValue);
+                url.searchParams.set('ajax_s', '1');
+            }
 
-    (function() { if (localStorage.getItem('arts-gym-theme') === 'dark') document.body.classList.add('dark-mode-active'); })();
+            $.get(url.toString(), function(res) {
+                if (tableType === 'member') {
+                    $('#mTable tbody').html(res.rows);
+                    $('#mPagination').html(res.pagination);
+                } else {
+                    $('#sTable tbody').html(res.rows);
+                    $('#sPagination').html(res.pagination);
+                }
+            }, 'json');
+        }, 350);
+    }
+
+    $('#mSearch').on('keyup', () => performSearch('member'));
+    $('#sSearch').on('keyup', () => performSearch('staff'));
+
+    (function() { 
+        if (localStorage.getItem('arts-gym-theme') === 'dark') {
+            document.body.classList.add('dark-mode-active'); 
+        }
+    })();
 </script>
 </body>
 </html>
