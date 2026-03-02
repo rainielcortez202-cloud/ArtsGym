@@ -166,7 +166,7 @@ if (isset($_GET['ajax'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Members | Arts Gym</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
     
@@ -176,121 +176,42 @@ if (isset($_GET['ajax'])) {
 
     <style>
         :root {
-            --primary-red: #e63946;
-            --accent-blue: #4361ee;
-            --bg-body: #f4f7fe;
-            --bg-card: #ffffff;
-            --text-main: #2b3674;
-            --text-muted: #a3aed0;
-            --sidebar-width: 280px;
-            --card-radius: 20px;
-            --shadow: 14px 17px 40px 4px rgba(112, 144, 176, 0.08);
+            --primary-red: #e63946; --bg-body: #f8f9fa; --bg-card: #ffffff;
+            --text-main: #1a1a1a; --text-muted: #8e8e93; --border-color: #f1f1f1;
+            --sidebar-width: 260px; --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
             --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         body.dark-mode-active {
-            --bg-body: #0b1437;
-            --bg-card: #111c44;
-            --text-main: #ffffff;
-            --text-muted: #a3aed0;
+            --bg-body: #0a0a0a; --bg-card: #121212; --text-main: #f5f5f7;
+            --text-muted: #86868b; --border-color: #1c1c1e; --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
         }
-        body { 
-            font-family: 'Plus Jakarta Sans', sans-serif; 
-            background-color: var(--bg-body); 
-            color: var(--text-main); 
-            transition: var(--transition); 
-        }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg-body); color: var(--text-main); transition: var(--transition); letter-spacing: -0.01em; }
+        
+        h1, h2, h3, h4, h5 { font-family: 'Oswald', sans-serif; text-transform: uppercase; }
 
-        #sidebar { 
-            width: var(--sidebar-width); 
-            height: 100vh; 
-            position: fixed; 
-            left: 0; 
-            top: 0; 
-            z-index: 1100; 
-            transition: var(--transition); 
-        }
-        #main { 
-            margin-left: var(--sidebar-width); 
-            transition: var(--transition); 
-            min-height: 100vh; 
-            padding: 1.5rem;
-            width: calc(100% - var(--sidebar-width));
-            box-sizing: border-box;
-        }
-        #main.expanded { margin-left: 80px; width: calc(100% - 80px); }
+        #sidebar { width: var(--sidebar-width); height: 100vh; position: fixed; left: 0; top: 0; z-index: 1100; transition: var(--transition); }
+        #main { margin-left: var(--sidebar-width); transition: var(--transition); min-height: 100vh; padding: 2rem; }
+        #main.expanded { margin-left: 80px; }
+        #sidebar.collapsed { width: 80px; }
 
         @media (max-width: 991.98px) {
-            #main { 
-                margin-left: 0 !important; 
-                width: 100% !important; 
-                padding: 1rem; 
-            }
-            #main.expanded { 
-                margin-left: 0 !important; 
-                width: 100% !important; 
-            }
+            #main { margin-left: 0 !important; padding: 1.5rem; }
             #sidebar { left: calc(var(--sidebar-width) * -1); }
             #sidebar.show { left: 0; box-shadow: 10px 0 30px rgba(0,0,0,0.1); }
-            .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 1090; backdrop-filter: blur(4px); }
+            .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1090; }
             .sidebar-overlay.show { display: block; }
+            #main.expanded { margin-left: var(--sidebar-width) !important; }
         }
 
-        .card-table { 
-            background: var(--bg-card); 
-            border-radius: var(--card-radius); 
-            padding: 20px; 
-            box-shadow: var(--shadow); 
-            margin-bottom: 2rem; 
-        }
-        .table thead th { 
-            background: var(--bg-card); 
-            color: var(--text-muted); 
-            font-size: 0.75rem; 
-            text-transform: uppercase; 
-            letter-spacing: 0.05em; 
-            font-weight: 700; 
-            border-bottom: 1px solid rgba(0,0,0,0.05); 
-            padding: 15px; 
-            white-space: nowrap;
-            position: sticky; 
-            top: 0; 
-            z-index: 5;
-        }
-        .table tbody td { padding: 15px; color: var(--text-main); border-bottom: 1px solid rgba(0,0,0,0.05); }
+        .card-table { background: var(--bg-card); border-radius: 20px; padding: 24px; box-shadow: var(--card-shadow); border: none; margin-bottom: 2rem; }
+        .table thead th { background: var(--bg-card); color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; border-bottom: 1px solid var(--border-color); padding: 15px; white-space: nowrap; }
+        .table tbody td { padding: 15px; color: var(black); border-bottom: 1px solid var(--border-color); }
         
         .col-qr { width: 80px; text-align: center; }
-        .top-header { 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            margin-bottom: 2rem; 
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        .header-actions {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .btn-action {
-            background: var(--bg-card);
-            border: none;
-            box-shadow: var(--shadow);
-            border-radius: 12px;
-            width: 42px;
-            height: 42px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--text-main);
-            cursor: pointer;
-            transition: var(--transition);
-        }
-        .btn-action:hover { background: var(--accent-blue); color: white; }
+        .top-header { background: transparent; padding: 0 0 2rem 0; display: flex; align-items: center; justify-content: space-between; }
         
         .table-responsive { max-height: 550px; overflow-y: auto; }
+        .table thead th { position: sticky; top: 0; z-index: 5; }
     </style>
 </head>
 <body class="<?= isset($_COOKIE['theme']) && $_COOKIE['theme'] == 'dark' ? 'dark-mode-active' : '' ?>">
@@ -300,20 +221,11 @@ if (isset($_GET['ajax'])) {
 
     <div id="main">
         <header class="top-header">
-            <div class="header-title d-flex align-items-center gap-3">
-                <button class="btn-action" onclick="toggleSidebar()">
-                    <i class="bi bi-list fs-5"></i>
-                </button>
-                <div>
-                    <h5 class="mb-0 fw-800">Members Management</h5>
-                    <p class="text-muted small mb-0 d-none d-sm-block">Directory & Membership</p>
-                </div>
+            <div class="d-flex align-items-center gap-3">
+                <button class="btn btn-light d-lg-none" id="toggleBtn" onclick="toggleSidebar()"><i class="bi bi-list"></i></button>
+                <h4 class="mb-0 fw-bold">Members Management</h4>
             </div>
-            <div class="header-actions">
-                <div class="d-none d-md-block">
-                    <?php include '../global_clock.php'; ?>
-                </div>
-            </div>
+            <div class="d-flex align-items-center gap-3"><?php include '../global_clock.php'; ?></div>
         </header>
 
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
@@ -560,11 +472,7 @@ if (isset($_GET['ajax'])) {
         }
     });
 
-    function toggleDarkMode() { 
-        const isDark = !document.body.classList.contains('dark-mode-active'); 
-        document.cookie = "theme=" + (isDark ? "dark" : "light") + ";path=/;max-age=" + (30*24*60*60); 
-        location.reload(); 
-    }
+    (function() { if (localStorage.getItem('arts-gym-theme') === 'dark') document.body.classList.add('dark-mode-active'); })();
 </script>
 </body>
 </html>
