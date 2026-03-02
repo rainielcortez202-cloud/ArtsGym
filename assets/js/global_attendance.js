@@ -63,8 +63,18 @@
 
     // --- ACTIONS ---
 
+    function getBasePath() {
+        // Detect if we are in a subdirectory like /Gym1/ or /ArtsGym-main/
+        // Just return root relative path, or attempt to detect
+        const path = window.location.pathname;
+        if (path.includes('/Gym1/')) return '/Gym1/';
+        if (path.includes('/ArtsGym-main/')) return '/ArtsGym-main/';
+        return '/';
+    }
+
     function handleScan(code) {
         console.log("Scanned:", code);
+        const basePath = getBasePath();
 
         function postponeScan() {
             sessionStorage.setItem('pending_qr', code);
@@ -72,10 +82,10 @@
 
         showToast("Pending...", "info");
 
-        fetch('/Gym1/login.php?check_session=1', { credentials: 'same-origin' })
+        fetch(basePath + 'login.php?check_session=1', { credentials: 'same-origin' })
             .then(res => {
-                if (!res.ok) throw new Error("Role check failed");
-                return res.json();
+                 if (!res.ok) throw new Error("Role check failed");
+                 return res.json();
             })
             .then(roleInfo => {
                 const role = roleInfo.role;
@@ -83,22 +93,22 @@
                     postponeScan();
                     showToast("Please login to record attendance", "warning");
                     if (!window.location.href.includes('login.php')) {
-                        setTimeout(() => window.location.href = '/Gym1/login.php', 1000);
+                        setTimeout(() => window.location.href = basePath + 'login.php', 1000);
                     }
                     return;
                 }
-                if (role === 'admin' && !window.location.href.includes('/admin/attendance_scan.php')) {
+                if (role === 'admin' && !window.location.href.includes('admin/attendance_scan.php')) {
                     postponeScan();
-                    window.location.href = '/Gym1/admin/attendance_scan.php';
+                    window.location.href = basePath + 'admin/attendance_scan.php';
                     return;
                 }
-                if (role === 'staff' && !window.location.href.includes('/staff/attendance_register.php')) {
+                if (role === 'staff' && !window.location.href.includes('staff/attendance_register.php')) {
                     postponeScan();
-                    window.location.href = '/Gym1/staff/attendance_register.php';
+                    window.location.href = basePath + 'staff/attendance_register.php';
                     return;
                 }
 
-                const endpoint = '/Gym1/admin/attendance_endpoint.php';
+                const endpoint = basePath + 'admin/attendance_endpoint.php';
 
                 showToast("Processing Scan...", "info");
 
@@ -108,7 +118,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ qr_code: code })
                 })
-                    .then(response => {
+                .then(response => {
                         return response.text().then(text => {
                             try {
                                 return JSON.parse(text);
@@ -129,7 +139,7 @@
                             postponeScan();
                             showToast("Please Login to Record Attendance", "warning");
                             if (!window.location.href.includes('login.php')) {
-                                setTimeout(() => window.location.href = '/Gym1/login.php', 1000);
+                                setTimeout(() => window.location.href = basePath + 'login.php', 1000);
                             }
                         } else {
                             showToast(`${data.message}`, 'error');
@@ -140,69 +150,40 @@
                         showToast("System Error. See Console.", 'error');
                     });
             })
-            .catch(err => {
-                console.error('Role check failed', err);
-                const endpoint = '/Gym1/admin/attendance_endpoint.php';
-                fetch(endpoint, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ qr_code: code })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        showToast(`${data.message}<br><small>${data.name || ''}</small>`, 'success');
-                        if (window.location.href.includes('attendance')) {
-                            setTimeout(() => location.reload(), 1000);
-                        }
-                    } else {
-                        postponeScan();
-                        showToast("Please login to record attendance", "warning");
-                        if (!window.location.href.includes('login.php')) {
-                            setTimeout(() => window.location.href = '/Gym1/login.php', 1000);
-                        }
-                    }
-                })
-                .catch(e => {
+            .catch(e => {
                     console.error("Attendance scan failed:", e);
                     postponeScan();
                     showToast("Scan failed or login required", "error");
                     if (!window.location.href.includes('login.php')) {
-                        setTimeout(() => window.location.href = '/Gym1/login.php', 1500);
+                        setTimeout(() => window.location.href = basePath + 'login.php', 1500);
                     }
                 });
-            });
     }
 
     // --- EVENT LISTENER ---
     document.addEventListener('keydown', function (e) {
-        try {
-            const currentTime = Date.now();
-            const target = e.target;
+        const currentTime = Date.now();
+        const target = e.target;
 
-            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-                return;
-            }
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+            return;
+        }
 
-            if (currentTime - lastKeyTime > SCAN_TIMEOUT) {
+        if (currentTime - lastKeyTime > SCAN_TIMEOUT) {
+            buffer = '';
+        }
+        lastKeyTime = currentTime;
+
+        if (e.key === 'Enter') {
+            if (buffer.length >= MIN_LENGTH) {
+                e.preventDefault();
+                const code = buffer;
                 buffer = '';
+                handleScan(code);
             }
-            lastKeyTime = currentTime;
-
-            if (e.key === 'Enter') {
-                if (buffer.length >= MIN_LENGTH) {
-                    e.preventDefault();
-                    const code = buffer;
-                    buffer = '';
-                    handleScan(code);
-                }
-            }
-            else if (e.key.length === 1) {
-                buffer += e.key;
-            }
-        } catch (err) {
-            console.error("Scanner Error:", err);
+        }
+        else if (e.key.length === 1) {
+            buffer += e.key;
         }
     });
 

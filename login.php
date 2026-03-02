@@ -1,13 +1,6 @@
 <?php
 require_once 'connection.php';
 
-// Handle session check (API mode)
-if (isset($_GET['check_session'])) {
-    header('Content-Type: application/json');
-    echo json_encode(['role' => $_SESSION['role'] ?? null]);
-    exit;
-}
-
 // Handle POST request (API mode)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Content-Type: application/json');
