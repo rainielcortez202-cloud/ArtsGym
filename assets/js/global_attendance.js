@@ -97,20 +97,11 @@
                 const role = roleInfo.role;
                 if (!role) {
                     postponeScan();
+                    sessionStorage.setItem('pending_redirect', window.location.href);
                     showToast("Please login to record attendance", "warning");
                     if (!window.location.href.includes('login.php')) {
-                        setTimeout(() => window.location.href = basePath + 'login.php', 1000);
+                        setTimeout(() => window.location.href = basePath + 'login.php?attendance=1', 1000);
                     }
-                    return;
-                }
-                if (role === 'admin' && !window.location.href.includes('admin/attendance_scan.php')) {
-                    postponeScan();
-                    window.location.href = basePath + 'admin/attendance_scan.php';
-                    return;
-                }
-                if (role === 'staff' && !window.location.href.includes('staff/attendance_register.php')) {
-                    postponeScan();
-                    window.location.href = basePath + 'staff/attendance_register.php';
                     return;
                 }
 
@@ -143,9 +134,10 @@
                             showToast(`${data.message}`, 'warning');
                         } else if (data.status === 'not_logged_in') {
                             postponeScan();
+                            sessionStorage.setItem('pending_redirect', window.location.href);
                             showToast("Please Login to Record Attendance", "warning");
                             if (!window.location.href.includes('login.php')) {
-                                setTimeout(() => window.location.href = basePath + 'login.php', 1000);
+                                setTimeout(() => window.location.href = basePath + 'login.php?attendance=1', 1000);
                             }
                         } else {
                             showToast(`${data.message}`, 'error');
@@ -159,9 +151,10 @@
             .catch(e => {
                     console.error("Attendance scan failed:", e);
                     postponeScan();
+                    sessionStorage.setItem('pending_redirect', window.location.href);
                     showToast("Scan failed or login required", "error");
                     if (!window.location.href.includes('login.php')) {
-                        setTimeout(() => window.location.href = basePath + 'login.php', 1500);
+                        setTimeout(() => window.location.href = basePath + 'login.php?attendance=1', 1500);
                     }
                 });
     }

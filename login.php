@@ -609,6 +609,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     dataType: 'json',
                     success: function(data) {
                         if (data.status === 'success') {
+                            const pendingRedirect = sessionStorage.getItem('pending_redirect');
+                            if (attendanceMode && pendingRedirect) {
+                                sessionStorage.removeItem('pending_redirect');
+                                window.location.href = pendingRedirect;
+                                return;
+                            }
                             if (data.redirect) {
                                 window.location.href = data.redirect;
                                 return;

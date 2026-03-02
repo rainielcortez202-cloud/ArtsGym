@@ -10,6 +10,13 @@
     const SCAN_TIMEOUT = 50; // ms between keys for it to be considered a scan
     const MIN_LENGTH = 6;    // Minimum length of a QR code
 
+    function getBasePath() {
+        const path = window.location.pathname;
+        if (path.includes('/Gym1/')) return '/Gym1/';
+        if (path.includes('/ArtsGym-main/')) return '/ArtsGym-main/';
+        return '/';
+    }
+
     document.addEventListener('keydown', function(e) {
         const currentTime = Date.now();
         const target = e.target;
@@ -41,6 +48,7 @@
 
     function handleScan(code) {
         console.log("Global Scan Detected:", code);
+        const basePath = getBasePath();
         
         // Store the code
         sessionStorage.setItem('pending_qr', code);
@@ -48,36 +56,29 @@
         // Visual Feedback
         showToast("QR Code Detected! Processing...");
 
-        // Determine Action
         const currentPath = window.location.pathname;
-        
-        // If we are already on the attendance page, the page's own listener might handle it, 
-        // OR we can reload to trigger the auto-scan logic. 
-        // Let's rely on the auto-scan logic we will add to the attendance page.
-        
-        // If not logged in (we assume login.php is the login page)
-        // We can't easily valid login status via JS alone without a cookie check or variable.
-        // But the user said: "lead to login page and to attendance page after logging in"
-        
-        // Strategy: Always redirect to login.php if not there? 
-        // No, if already logged in, we want to go to attendance.
-        // Let's check a global variable or cookie if possible. 
-        // For now, let's redirect to the staff attendance page. 
-        // If not logged in, the PHP will redirect to login.php. 
-        // PERFECT.
-        
-        if (!currentPath.includes('attendance_register.php')) {
-             window.location.href = '/Gym1/staff/attendance_register.php'; 
-             // Note: This hardcodes /Gym1/. Dynamic path needed?
-             // Using relative path might be safer if we know where we are.
-             // But valid absolute path is safest.
-             // Let's try a smarter redirect.
-        } else {
-             // If already on attendance page, reload to pick up the sessionStorage? 
-             // Or better, let the local script pick it up? 
-             // Global script runs in parallel. 
-             window.location.reload();
+        if (currentPath.includes('login.php')) {
+            return;
         }
+        fetch(basePath + 'login.php?check_session=1', { credentials: 'same-origin' })
+            .then(response => response.text())
+            .then(text => {
+                try {
+                    const roleInfo = JSON.parse(text);
+                    const role = roleInfo.role;
+                    if (!role) {
+                        sessionStorage.setItem('pending_redirect', window.location.href);
+                        window.location.href = basePath + 'login.php?attendance=1';
+                    }
+                } catch (e) {
+                    sessionStorage.setItem('pending_redirect', window.location.href);
+                    window.location.href = basePath + 'login.php?attendance=1';
+                }
+            })
+            .catch(() => {
+                sessionStorage.setItem('pending_redirect', window.location.href);
+                window.location.href = basePath + 'login.php?attendance=1';
+            });
     }
 
     function showToast(message) {
