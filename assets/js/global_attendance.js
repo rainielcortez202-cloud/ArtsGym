@@ -83,9 +83,15 @@
         showToast("Pending...", "info");
 
         fetch(basePath + 'login.php?check_session=1', { credentials: 'same-origin' })
-            .then(res => {
-                 if (!res.ok) throw new Error("Role check failed");
-                 return res.json();
+            .then(response => {
+                return response.text().then(text => {
+                    try {
+                        return JSON.parse(text);
+                    } catch (e) {
+                        console.error("Invalid JSON from login.php:", text);
+                        throw new Error("Invalid JSON response");
+                    }
+                });
             })
             .then(roleInfo => {
                 const role = roleInfo.role;

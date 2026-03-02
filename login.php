@@ -1,4 +1,13 @@
 <?php
+// Handle session check (API mode) - EARLY EXIT before DB connection
+if (isset($_GET['check_session'])) {
+    // Only include security for session management, skip DB connection
+    require_once 'includes/security.php'; 
+    header('Content-Type: application/json');
+    echo json_encode(['role' => $_SESSION['role'] ?? null]);
+    exit;
+}
+
 require_once 'connection.php';
 
 // Handle POST request (API mode)
