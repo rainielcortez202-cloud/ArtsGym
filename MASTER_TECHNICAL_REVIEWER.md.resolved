@@ -1,0 +1,438 @@
+# Arts Gym Management System — Master Technical Reviewer (Single-File, Exhaustive)
+
+**Project root:** `c:\xampp\htdocs\Gym1`  
+**Architecture type:** PHP monolith (server-rendered pages + AJAX endpoints) with role-based panels (`admin/`, `staff/`, `member/`).  
+**Primary database:** Supabase Postgres (TLS enforced in DSN).  
+**Core identity model:** Local `users` table + optional Supabase Auth mirror (metadata sync + optional frontend Supabase login).
+
+---
+
+## 1) System Architecture & Tech Stack
+
+### 1.1 High-Level Architecture (What it is)
+- **UI layer:** Server-rendered HTML (Bootstrap-based) with targeted JavaScript for AJAX, debounced search, QR scanning, PDF export, and calendar planning.
+- **Application layer (PHP):** Direct PHP scripts per page/endpoint, no Laravel/Symfony-style framework routing.
+- **Data layer:** Postgres via PDO (`pdo_pgsql`) to Supabase pooler endpoint.
+- **Security layer:** Global security headers + CSRF helpers + session hardening implemented in [security.php](file:///c:/xampp/htdocs/Gym1/includes/security.php), typically activated whenever a file includes [connection.php](file:///c:/xampp/htdocs/Gym1/connection.php).
+- **Integrations:**
+  - **Supabase** (Postgres + RLS + optional Auth + (optionally enabled) Realtime)
+    - SQL policy setup in [supabase_setup.sql](file:///c:/xampp/htdocs/Gym1/supabase_setup.sql)
+    - Auth metadata sync in [supabase_sync.php](file:///c:/xampp/htdocs/Gym1/supabase_sync.php)
+    - Frontend Supabase JS bridge in [supabase-config.php](file:///c:/xampp/htdocs/Gym1/assets/js/supabase-config.php)
+  - **Brevo (Sendinblue)** for transactional emails (verification, resets, email change, receipts)
+    - Shared helper: [brevo_send.php](file:///c:/xampp/htdocs/Gym1/includes/brevo_send.php)
+
+### 1.2 Runtime / Platform Versions
+| Component | In Repo / Observed | Notes |
+|---|---:|---|
+| PHP | **8.2** (Docker) | [Dockerfile](file:///c:/xampp/htdocs/Gym1/Dockerfile#L1) uses `php:8.2-apache`. XAMPP local PHP version may differ. |
+| DB driver | `pdo_pgsql`, `pgsql` | Enabled in Dockerfile. |
+| Database | **Supabase Postgres** | Connection uses pooler `aws-1-ap-south-1.pooler.supabase.com:6543` and `sslmode=require` in [connection.php](file:///c:/xampp/htdocs/Gym1/connection.php#L10-L29). |
+| Frontend libs | Bootstrap 5.x, jQuery 3.6, FullCalendar 6.x, html2canvas, jsPDF, html5-qrcode, supabase-js | Mostly loaded via CDN, plus local minified libs for PDF. |
+
+### 1.3 Libraries & External Dependencies (Observed)
+**Frontend (CDN/local):**
+- Bootstrap CSS/JS, Bootstrap Icons (CDN)
+- Google Fonts (CDN)
+- jQuery 3.6 (CDN)
+- Supabase JS SDK v2 (CDN) + config injected by PHP ([supabase-config.php](file:///c:/xampp/htdocs/Gym1/assets/js/supabase-config.php))
+- FullCalendar 6.1.10 (CDN) in workout planner ([my_workouts.php](file:///c:/xampp/htdocs/Gym1/member/my_workouts.php))
+- `html2canvas.min.js` + `jspdf.umd.min.js` (local files under `assets/js/`) used in reports ([reports.php](file:///c:/xampp/htdocs/Gym1/admin/reports.php))
+- `html5-qrcode` (CDN) in camera attendance scanner ([attendance_scan.php](file:///c:/xampp/htdocs/Gym1/admin/attendance_scan.php))
+
+**Backend (PHP):**
+- PDO (Postgres)
+- cURL (Brevo + Supabase admin API calls)
+- `vendor/phpqrcode/*` for QR code PNG generation:
+  - Streaming generator: [generate_qr.php](file:///c:/xampp/htdocs/Gym1/generate_qr.php)
+  - Alternative member QR generator: [qr_code.php](file:///c:/xampp/htdocs/Gym1/member/qr_code.php)
+
+### 1.4 High-Level Request → Response Data Flow (End-to-End)
+**Typical authenticated page request (SSR):**
+1. **Browser → PHP page** (e.g., `/admin/dashboard.php`)
+2. Page starts `session_start()` and includes [auth.php](file:///c:/xampp/htdocs/Gym1/auth.php) (login + membership gating).
+3. Page includes [connection.php](file:///c:/xampp/htdocs/Gym1/connection.php) which:
+   - Loads [security.php](file:///c:/xampp/htdocs/Gym1/includes/security.php) (headers + CSRF helpers + session cookie settings if session not started yet)
+   - Creates PDO connection to Supabase Postgres
+   - Runs daily “lazy cron” cleanup via [auto_cleanup.php](file:///c:/xampp/htdocs/Gym1/includes/auto_cleanup.php)
+4. PHP executes SQL queries.
+5. PHP emits HTML with embedded dynamic values; frontend JS enhances with AJAX where needed.
+
+**Typical AJAX endpoint flow:**
+1. **Browser JS → PHP endpoint** (POST/GET)
+2. Endpoint checks session role and (sometimes) calls `validate_csrf()`
+3. Endpoint executes SQL and returns JSON
+4. Frontend updates DOM (table rows, pagination, toasts, etc.)
+
+---
+
+## 2) Frontend (UI, JS, Interactivity)
+
+### 2.1 UI Structure
+- **Three role-based UIs:** `admin/`, `staff/`, `member/`
+- Shared sidebar pattern:
+  - `admin/_sidebar.php`, `staff/_sidebar.php`, `member/_sidebar.php`
+- Shared clock widget: [global_clock.php](file:///c:/xampp/htdocs/Gym1/global_clock.php)
+- Shared CSS: [shared_layout.css](file:///c:/xampp/htdocs/Gym1/assets/css/shared_layout.css) (plus extensive per-page `<style>` blocks)
+
+### 2.2 JavaScript Logic Patterns Used
+
+#### A) Global HID “Keyboard Scanner” Attendance Capture
+- Primary implementation: [global_attendance.js](file:///c:/xampp/htdocs/Gym1/assets/js/global_attendance.js)
+  - Buffers rapid keystrokes (scanner behavior), ignores typing in `<input>`/`<textarea>`
+  - On Enter, POSTs `{ qr_code }` to `/Gym1/admin/attendance_endpoint.php`
+  - Shows toast feedback and can redirect to login if not authenticated
+  - Stores a `pending_qr` in `sessionStorage` and replays it after login
+- Legacy/alternate: [global_scanner.js](file:///c:/xampp/htdocs/Gym1/assets/js/global_scanner.js)
+
+#### B) Camera-Based QR Scan (Webcam)
+- Uses `html5-qrcode` library in [attendance_scan.php](file:///c:/xampp/htdocs/Gym1/admin/attendance_scan.php)
+- Unified handler sends scan content to `attendance_endpoint.php`
+
+#### C) Debounced Live Search (AJAX)
+- Example: staff member management page [members.php](file:///c:/xampp/htdocs/Gym1/staff/members.php)
+  - `keyup` → 300ms debounce → `GET` same page with `ajax=1`
+  - Server returns JSON containing HTML `<tr>` rows + pagination HTML
+  - Frontend replaces `<tbody>` and pagination without full reload
+
+#### D) Cascading Selection (Muscle Groups → Muscles → Exercises)
+- Implemented via AJAX GET parameters in workout planner:
+  - [my_workouts.php](file:///c:/xampp/htdocs/Gym1/member/my_workouts.php)
+    - `?fetch_muscles=1&group_ids[]=...`
+    - `?fetch_exercises=1&muscle_ids[]=...`
+
+#### E) Dark Mode (Cookie + Zero-FOUC pattern)
+- Many pages set `<body class="dark-mode-active">` server-side if `$_COOKIE['theme'] == 'dark'`
+  - Example: [members.php](file:///c:/xampp/htdocs/Gym1/staff/members.php#L217)
+- Toggle usually writes a cookie and reloads.
+
+#### F) PDF Generation (Client-Side “Screenshot PDF”)
+- [reports.php](file:///c:/xampp/htdocs/Gym1/admin/reports.php)
+  - `html2canvas(element)` → canvas → `jsPDF.addImage()` → download
+
+#### G) Supabase JS Bridge (Injected Config)
+- [supabase-config.php](file:///c:/xampp/htdocs/Gym1/assets/js/supabase-config.php)
+  - Initializes `window.supabaseClient = supabase.createClient(url, anonKey)`
+  - Used for Supabase Auth login/signup in [login.php](file:///c:/xampp/htdocs/Gym1/login.php)
+
+### 2.3 Frontend ↔ Backend Endpoint Map (Representative)
+| Frontend Feature | JS Trigger | Backend Endpoint | Result |
+|---|---|---|---|
+| Attendance scan (HID/global) | key buffer → Enter | [attendance_endpoint.php](file:///c:/xampp/htdocs/Gym1/admin/attendance_endpoint.php) | Inserts attendance row or returns warning/error |
+| Attendance scan (camera) | html5-qrcode callback | `attendance_endpoint.php` | Same as above |
+| Staff member live search | debounce `keyup` | [members.php](file:///c:/xampp/htdocs/Gym1/staff/members.php) (`?ajax=1`) | Returns rows + pagination JSON |
+| Member plan cascading | checkbox change | [my_workouts.php](file:///c:/xampp/htdocs/Gym1/member/my_workouts.php) | Returns JSON list |
+| Admin backup export | form submit | [settings.php](file:///c:/xampp/htdocs/Gym1/admin/settings.php) | Streams SQL dump |
+| Admin backup import | file upload | `settings.php` | Executes uploaded SQL |
+
+### 2.4 “Reacting to DB changes”
+Current repo uses:
+- Full page reloads after many mutations (payments, walk-ins, etc.)
+- AJAX partial refresh (live search)
+- Polling endpoint for attendance updates: [attendance_updates.php](file:///c:/xampp/htdocs/Gym1/admin/attendance_updates.php)
+- Supabase Realtime is described in [supabase_setup.sql](file:///c:/xampp/htdocs/Gym1/supabase_setup.sql), but no active realtime subscription code exists in current sources.
+
+---
+
+## 3) Backend (Files, Security, Algorithms, Workflows)
+
+### 3.1 Core Backend “Middleware” Files (Cross-Cutting)
+
+#### A) Database Connection + Lazy Daily Maintenance
+- [connection.php](file:///c:/xampp/htdocs/Gym1/connection.php)
+  - Connects to Supabase Postgres pooler with `sslmode=require`
+  - Sets timezone to Asia/Manila (PHP + Postgres session)
+  - Runs auto-cleanup “once per day”: [auto_cleanup.php](file:///c:/xampp/htdocs/Gym1/includes/auto_cleanup.php)
+
+**Algorithm: Lazy-Cron Auto Cleanup**
+1. On each DB connection, check `settings.setting_key='last_auto_cleanup'`
+2. If already ran today, do nothing
+3. Else purge: old `activity_log`, old `attendance`, old `walk_ins`, expired `ip_login_attempts`, stale unverified users
+4. Update `settings.last_auto_cleanup`
+
+#### B) Global Security Layer
+- [security.php](file:///c:/xampp/htdocs/Gym1/includes/security.php)
+  - Security headers (CSP, clickjacking, etc.)
+  - Session cookie hardening (HttpOnly, SameSite=Lax, Secure when HTTPS)
+  - CSRF token generation + validators
+  - Output escaping helper `e()`
+  - Global input truncation to 255 chars
+  - Max upload size enforcement (5 MB)
+
+#### C) Authentication Gatekeeper + Membership Gating
+- [auth.php](file:///c:/xampp/htdocs/Gym1/auth.php)
+  - Requires session login
+  - For `role=member`, checks latest `sales.expires_at`; if expired/unpaid → destroys session → redirects to login
+
+### 3.2 Authentication, Authorization, RBAC
+Roles observed: `admin`, `staff`, `member`. Enforcement is done via:
+- Per-page `$_SESSION['role']` checks
+- Folder organization + explicit redirect logic in each file
+
+### 3.3 Login + Lockouts + Sessions
+- [login.php](file:///c:/xampp/htdocs/Gym1/login.php)
+  - CSRF validation on POST
+  - IP lockouts via `ip_login_attempts`
+  - Account lockouts via `users.login_attempts` and `users.lockout_until`
+  - `password_verify()` + `session_regenerate_id(true)`
+  - Activity logging to `activity_log`
+
+### 3.4 QR Code Workflows (Generation + Scan)
+- QR generation:
+  - [generate_qr.php](file:///c:/xampp/htdocs/Gym1/generate_qr.php) (server-side PNG stream)
+  - [qr_code.php](file:///c:/xampp/htdocs/Gym1/member/qr_code.php) (alternate member QR PNG)
+- QR scanning:
+  - HID capture: [global_attendance.js](file:///c:/xampp/htdocs/Gym1/assets/js/global_attendance.js)
+  - Camera scan: [attendance_scan.php](file:///c:/xampp/htdocs/Gym1/admin/attendance_scan.php)
+  - Unified attendance insert: [attendance_endpoint.php](file:///c:/xampp/htdocs/Gym1/admin/attendance_endpoint.php)
+
+### 3.5 Attendance Recording (Unified Endpoint)
+- [attendance_endpoint.php](file:///c:/xampp/htdocs/Gym1/admin/attendance_endpoint.php)
+  - Session role enforcement (`admin`/`staff`)
+  - Member lookup by `users.qr_code`
+  - Membership validation via `users.status` + `syncUserStatus()` ([status_sync.php](file:///c:/xampp/htdocs/Gym1/includes/status_sync.php))
+  - Duplicate prevention per day
+  - Insert into `attendance`
+
+### 3.6 Payment + Membership Status
+- Staff payments: [staff_register_payment.php](file:///c:/xampp/htdocs/Gym1/staff/staff_register_payment.php)
+- Status sync helper: [status_sync.php](file:///c:/xampp/htdocs/Gym1/includes/status_sync.php)
+- Selective status syncing pattern: [members.php](file:///c:/xampp/htdocs/Gym1/staff/members.php)
+
+### 3.7 Walk-ins (Non-member Sales + Attendance)
+- Staff daily: [daily.php](file:///c:/xampp/htdocs/Gym1/staff/daily.php)
+- Admin daily + rate: [daily.php](file:///c:/xampp/htdocs/Gym1/admin/daily.php)
+- Transaction pattern: `walk_ins` + `sales(user_id=NULL)` + `attendance(user_id=NULL)` + activity log
+
+### 3.8 Exercise Library + Workout Planner
+- Admin catalog: [manage_exercises.php](file:///c:/xampp/htdocs/Gym1/admin/manage_exercises.php)
+- Image upload: [upload_image.php](file:///c:/xampp/htdocs/Gym1/admin/upload_image.php)
+- Member guide: [exercises.php](file:///c:/xampp/htdocs/Gym1/member/exercises.php)
+- Member planner: [my_workouts.php](file:///c:/xampp/htdocs/Gym1/member/my_workouts.php)
+
+### 3.9 Brevo Email Workflows
+- Helper: [brevo_send.php](file:///c:/xampp/htdocs/Gym1/includes/brevo_send.php)
+- Registration verify: [register.php](file:///c:/xampp/htdocs/Gym1/register.php) → [verify_email.php](file:///c:/xampp/htdocs/Gym1/verify_email.php)
+- Resend: [resend_verification.php](file:///c:/xampp/htdocs/Gym1/resend_verification.php)
+- Forgot/reset: [forgot_password.php](file:///c:/xampp/htdocs/Gym1/forgot_password.php) → [reset_password.php](file:///c:/xampp/htdocs/Gym1/reset_password.php)
+- Email change: [request_email_change.php](file:///c:/xampp/htdocs/Gym1/request_email_change.php) → [approve_email_change.php](file:///c:/xampp/htdocs/Gym1/approve_email_change.php) → [verify_email.php](file:///c:/xampp/htdocs/Gym1/verify_email.php)
+
+---
+
+## 4) Database (Tables, Relationships, Indexes, Advanced SQL, RLS)
+
+### 4.1 Core Tables (Observed)
+Derived from code references and [supabase_setup.sql](file:///c:/xampp/htdocs/Gym1/supabase_setup.sql).
+
+#### `users`
+Key columns: `id`, `full_name`, `email`, `password`, `role`, `status`, `qr_code`, `qr_image`, `is_verified`, `verification_token`, `login_attempts`, `lockout_until`, `reset_token`, `reset_expires`, `created_at`, `fts`.
+
+#### `sales`
+Key columns: `id`, `user_id` (nullable), `amount`, `sale_date`, `expires_at` (nullable).
+
+#### `attendance`
+Key columns: `id`, `user_id` (nullable), `visitor_name` (nullable), `date`, `time_in`, `attendance_date`.
+
+#### `walk_ins`
+Key columns: `id`, `visitor_name`, `amount`, `visit_date`, `checked_in_by`.
+
+#### `activity_log`
+Key columns: `user_id`, `role`, `action`, `details`, `member_id`, `ip_address`, `created_at`.
+
+#### `settings`
+Key columns: `setting_key` (unique), `setting_value`, `updated_at`.
+
+#### Fitness taxonomy + planning tables
+`muscle_groups`, `muscles`, `exercises`, `workout_plans`, `workout_plan_exercises`.
+
+#### Security utility table
+`ip_login_attempts` per [supabase_setup.sql](file:///c:/xampp/htdocs/Gym1/supabase_setup.sql#L74-L79).
+
+### 4.2 Relationships (Cardinality)
+| Relationship | Type | Meaning |
+|---|---|---|
+| `users → sales` | 1-to-many | multiple renewals/payments |
+| `users → attendance` | 1-to-many | many check-ins |
+| `users → workout_plans` | 1-to-many | scheduled workouts |
+| `workout_plans ↔ exercises` | many-to-many | via `workout_plan_exercises` |
+| `muscle_groups → muscles → exercises` | 1-to-many chain | taxonomy |
+| `users → walk_ins.checked_in_by` | 1-to-many | staff/admin logging walk-ins |
+
+### 4.3 Indexing Strategy
+- Full-text search: `users.fts` + GIN index in [supabase_setup.sql](file:///c:/xampp/htdocs/Gym1/supabase_setup.sql#L54-L72)
+- Composite index for latest expiry queries: [add_indexes.php](file:///c:/xampp/htdocs/Gym1/add_indexes.php)
+  - `idx_sales_user_expiry ON sales(user_id, expires_at DESC)`
+- Additional B-tree indexes for `users(full_name)`, `users(email)`, `users(role)` via `add_indexes.php`
+
+### 4.4 Advanced SQL Patterns in Use
+- `LATERAL JOIN` for paginated latest sale per user: [members.php](file:///c:/xampp/htdocs/Gym1/staff/members.php#L42-L53)
+- CTE in bulk sync helper: [status_sync.php](file:///c:/xampp/htdocs/Gym1/includes/status_sync.php)
+- `STRING_AGG` aggregations for workout history: [my_workouts.php](file:///c:/xampp/htdocs/Gym1/member/my_workouts.php)
+
+### 4.5 RLS (Row Level Security) Policies and Impact
+- RLS enabled on `users`, `attendance`, `sales`: [supabase_setup.sql](file:///c:/xampp/htdocs/Gym1/supabase_setup.sql#L18-L20)
+- Policies:
+  - Users can read own profile/attendance
+  - Admin/staff can read broader sets
+- Practical note: most access is via server-side PDO, so RLS becomes critical mainly when shifting reads/writes to Supabase APIs authenticated as the end user.
+
+---
+
+## 5) Integrations & External Services
+
+### 5.1 Supabase
+- Cloud Postgres database with TLS enforced in DSN ([connection.php](file:///c:/xampp/htdocs/Gym1/connection.php#L28))
+- RLS + FTS migration: [supabase_setup.sql](file:///c:/xampp/htdocs/Gym1/supabase_setup.sql)
+- Optional Auth integration:
+  - Frontend uses `supabaseClient.auth.signInWithPassword()` and `signUp()` in [login.php](file:///c:/xampp/htdocs/Gym1/login.php)
+  - Server-side role sync in [supabase_sync.php](file:///c:/xampp/htdocs/Gym1/supabase_sync.php)
+
+### 5.2 Brevo (Transactional Email)
+- Shared helper: [brevo_send.php](file:///c:/xampp/htdocs/Gym1/includes/brevo_send.php)
+- Used for verification, password reset, and email-change workflows
+- Failure handling: helper returns structured errors; UI shows JSON errors without crashing the app
+
+---
+
+## 6) Security (Multi-Layer Defense Model)
+
+### 6.1 Network / Transport
+- TLS to Supabase enforced using `sslmode=require`
+- `.htaccess` disables directory indexing and blocks direct access to some sensitive files: [.htaccess](file:///c:/xampp/htdocs/Gym1/.htaccess)
+
+### 6.2 Browser Layer
+- Security headers in [security.php](file:///c:/xampp/htdocs/Gym1/includes/security.php#L7-L14), including CSP.
+
+### 6.3 Application Layer
+- CSRF framework: `csrf_field()`, `csrf_script()`, `validate_csrf()` in [security.php](file:///c:/xampp/htdocs/Gym1/includes/security.php)
+- Session hardening: HttpOnly, SameSite=Lax, Secure when HTTPS
+- Input truncation: global 255-char clamp
+- Upload size limit: 5MB enforcement
+- Password hashing: `password_hash()` + `password_verify()`
+
+### 6.4 Database Layer
+- Prepared statements widely used for critical paths (login/register/attendance/payments)
+- Indexing strategy supports performance
+- RLS policies exist (Supabase-side)
+
+### 6.5 Important Risk Areas to Be Aware Of (Panel-Ready)
+- Secrets are hardcoded in some files (DB password, Supabase keys, some Brevo keys). In production, move to environment variables and rotate keys.
+- CSRF validation is not consistently enforced on every state-changing endpoint (some POST endpoints do not call `validate_csrf()`).
+- Some cURL calls disable TLS verification; should be enabled for production.
+
+---
+
+## 7) Step-by-Step Data Flows (Detailed)
+
+### 7.1 Registration → Email Verification → First Login
+1. Member submits registration.
+2. PHP validates CSRF and password rules, checks duplicates.
+3. Inserts `users` row with verification token and QR code.
+4. Sends verification email via Brevo.
+5. Member clicks verification link; `verify_email.php` marks verified.
+6. Member logs in; `login.php` enforces membership payment/expiry rules before granting access.
+
+### 7.2 QR Scan Check-in (HID Scanner or Camera)
+1. Scan captured by HID listener or camera decoder.
+2. Frontend POSTs `{ qr_code }` to [attendance_endpoint.php](file:///c:/xampp/htdocs/Gym1/admin/attendance_endpoint.php).
+3. Endpoint validates role + membership, prevents duplicate check-in, inserts into `attendance`.
+4. Returns JSON status; UI shows toast and optionally reloads.
+
+### 7.3 Walk-in Visitor Logging
+1. Staff/admin enters walk-in name.
+2. System loads `daily_walkin_rate` from `settings`.
+3. In a transaction, inserts into `walk_ins`, `sales(user_id=NULL)`, and `attendance(user_id=NULL)`.
+4. Logs activity and refreshes UI.
+
+### 7.4 Report Generation → PDF Export
+1. Admin loads [reports.php](file:///c:/xampp/htdocs/Gym1/admin/reports.php) and server computes KPIs.
+2. User clicks PDF; `html2canvas` captures DOM and `jsPDF` downloads it.
+
+---
+
+## 8) Edge Cases / Panel Prep (Tricky Questions + Strong Answers)
+
+### Expired member bookmark bypass
+- No. [auth.php](file:///c:/xampp/htdocs/Gym1/auth.php) re-checks membership expiry and destroys the session if expired.
+
+### Duplicate attendance scan
+- Prevented by checking for an existing attendance row for `CURRENT_DATE` before inserting in [attendance_endpoint.php](file:///c:/xampp/htdocs/Gym1/admin/attendance_endpoint.php).
+
+### High-volume performance
+- Latest-payment lookups optimized using `LATERAL JOIN` plus a composite index ([members.php](file:///c:/xampp/htdocs/Gym1/staff/members.php), [add_indexes.php](file:///c:/xampp/htdocs/Gym1/add_indexes.php)).
+- Status sync is “selective” (only rows being displayed are updated).
+
+### Brevo/Supabase downtime
+- Brevo failures return JSON errors; user can retry resend/reset.
+- Supabase Auth failures do not block PHP-session login (it’s optional in the current design).
+
+---
+
+## 9) File-by-File Reviewer (Project Index)
+
+### Root
+- [.htaccess](file:///c:/xampp/htdocs/Gym1/.htaccess): Access hardening and directory listing off.
+- [Dockerfile](file:///c:/xampp/htdocs/Gym1/Dockerfile): PHP 8.2 Apache + required extensions.
+- [connection.php](file:///c:/xampp/htdocs/Gym1/connection.php): DB connection, timezone, auto-cleanup, `logActivity`.
+- [auth.php](file:///c:/xampp/htdocs/Gym1/auth.php): Session gate + membership gating.
+- [login.php](file:///c:/xampp/htdocs/Gym1/login.php): Login UI + JSON login API; lockouts; optional Supabase Auth login/signup.
+- [register.php](file:///c:/xampp/htdocs/Gym1/register.php): Member registration + verification email.
+- [verify_email.php](file:///c:/xampp/htdocs/Gym1/verify_email.php): Verification and email-change verification completion.
+- [resend_verification.php](file:///c:/xampp/htdocs/Gym1/resend_verification.php): Resend verification token flow.
+- [forgot_password.php](file:///c:/xampp/htdocs/Gym1/forgot_password.php): Generates reset token; emails link.
+- [reset_password.php](file:///c:/xampp/htdocs/Gym1/reset_password.php): Reset UI + password update.
+- [request_email_change.php](file:///c:/xampp/htdocs/Gym1/request_email_change.php): Initiates two-stage email change.
+- [approve_email_change.php](file:///c:/xampp/htdocs/Gym1/approve_email_change.php): Approves and sends new-email verification.
+- [generate_qr.php](file:///c:/xampp/htdocs/Gym1/generate_qr.php): Streams QR PNG from payload.
+- [supabase_setup.sql](file:///c:/xampp/htdocs/Gym1/supabase_setup.sql): RLS + FTS + lockout DDL.
+- [supabase_sync.php](file:///c:/xampp/htdocs/Gym1/supabase_sync.php): Supabase Auth metadata sync (+ optional bulk).
+- [add_indexes.php](file:///c:/xampp/htdocs/Gym1/add_indexes.php): Index bootstrap script.
+
+### includes/
+- [security.php](file:///c:/xampp/htdocs/Gym1/includes/security.php): Headers, session hardening, CSRF, truncation, upload limits.
+- [auto_cleanup.php](file:///c:/xampp/htdocs/Gym1/includes/auto_cleanup.php): Once-per-day purge of stale data.
+- [status_sync.php](file:///c:/xampp/htdocs/Gym1/includes/status_sync.php): Membership status sync logic.
+- [brevo_send.php](file:///c:/xampp/htdocs/Gym1/includes/brevo_send.php): Brevo email helper.
+- [supabase_config.php](file:///c:/xampp/htdocs/Gym1/includes/supabase_config.php): Supabase config keys/URLs.
+- [log_activity.php](file:///c:/xampp/htdocs/Gym1/includes/log_activity.php): Alternate activity log helper.
+
+### admin/
+- [attendance_endpoint.php](file:///c:/xampp/htdocs/Gym1/admin/attendance_endpoint.php): Unified attendance API.
+- [attendance_scan.php](file:///c:/xampp/htdocs/Gym1/admin/attendance_scan.php): Webcam scan UI.
+- [attendance_updates.php](file:///c:/xampp/htdocs/Gym1/admin/attendance_updates.php): Polling endpoint for new attendance.
+- [reports.php](file:///c:/xampp/htdocs/Gym1/admin/reports.php): KPI reports + client-side PDF.
+- [settings.php](file:///c:/xampp/htdocs/Gym1/admin/settings.php): Backup export/import.
+- [manage_exercises.php](file:///c:/xampp/htdocs/Gym1/admin/manage_exercises.php): Exercise library management.
+- [upload_image.php](file:///c:/xampp/htdocs/Gym1/admin/upload_image.php): Exercise image upload handler.
+- [admin_user_actions.php](file:///c:/xampp/htdocs/Gym1/admin/admin_user_actions.php): Admin CRUD endpoint for users.
+- [daily.php](file:///c:/xampp/htdocs/Gym1/admin/daily.php): Walk-ins + daily rate configuration.
+- [add_walkin.php](file:///c:/xampp/htdocs/Gym1/admin/add_walkin.php): Walk-in insertion endpoint.
+
+### staff/
+- [members.php](file:///c:/xampp/htdocs/Gym1/staff/members.php): Member listing with LATERAL join, AJAX search, and payments.
+- [staff_register_payment.php](file:///c:/xampp/htdocs/Gym1/staff/staff_register_payment.php): Inserts sales and activates members.
+- [daily.php](file:///c:/xampp/htdocs/Gym1/staff/daily.php): Walk-in logging.
+
+### member/
+- [exercises.php](file:///c:/xampp/htdocs/Gym1/member/exercises.php): Workout guide taxonomy browsing.
+- [my_workouts.php](file:///c:/xampp/htdocs/Gym1/member/my_workouts.php): Workout planner with FullCalendar and AJAX cascading.
+- [qr_code.php](file:///c:/xampp/htdocs/Gym1/member/qr_code.php): Member QR PNG stream endpoint.
+
+### assets/
+- [global_attendance.js](file:///c:/xampp/htdocs/Gym1/assets/js/global_attendance.js): Primary HID scanner attendance workflow.
+- [global_scanner.js](file:///c:/xampp/htdocs/Gym1/assets/js/global_scanner.js): Legacy scanner redirect logic.
+- [supabase-config.php](file:///c:/xampp/htdocs/Gym1/assets/js/supabase-config.php): JS bridge to Supabase URL/anon key.
+- [html2canvas.min.js](file:///c:/xampp/htdocs/Gym1/assets/js/html2canvas.min.js), [jspdf.umd.min.js](file:///c:/xampp/htdocs/Gym1/assets/js/jspdf.umd.min.js): PDF generation libs.
+
+---
+
+## 10) Master Summary (Strengths + Selling Point)
+
+### Strength Highlights
+- Clear RBAC separation with dedicated admin/staff/member panels.
+- Performance-aware SQL (`LATERAL JOIN`, composite indexing, debounced search, selective status sync).
+- Security foundation: CSP, CSRF framework, hardened sessions, password hashing.
+- Supabase Postgres capabilities leveraged: RLS, FTS, and managed infrastructure.
+
+### One-Paragraph Panel “Selling Point”
+Arts Gym is a production-minded gym management platform that combines a reliable PHP monolith (fast to deploy and maintain) with modern Supabase Postgres capabilities (RLS, full-text search, and scalable indexing). It demonstrates operational thinking through QR-based attendance automation, performance-optimized member listing via `LATERAL JOIN`, debounced live search, and a daily self-maintaining cleanup process that works even on shared hosting. The result is a secure, scalable, role-based system designed to handle real gym workflows: onboarding, verification, payments, walk-ins, attendance tracking, reporting, and member self-service fitness planning.

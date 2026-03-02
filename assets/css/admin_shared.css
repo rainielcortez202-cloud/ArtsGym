@@ -1,0 +1,98 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+
+:root {
+    --primary-red: #e63946;
+    --accent-blue: #4361ee;
+    --bg-body: #f4f7fe;
+    --bg-card: #ffffff;
+    --text-main: #2b3674;
+    --text-muted: #a3aed0;
+    --sidebar-width: 280px;
+    --card-radius: 12px;
+    --shadow: 14px 17px 40px 4px rgba(112, 144, 176, 0.08);
+    --transition: all 0.25s ease;
+}
+
+body.dark-mode-active {
+    --bg-body: #0b1437;
+    --bg-card: #111c44;
+    --text-main: #ffffff;
+    --text-muted: #a3aed0;
+}
+
+body { 
+    font-family: 'Plus Jakarta Sans', sans-serif; 
+    background-color: var(--bg-body); 
+    color: var(--text-main);
+    transition: var(--transition);
+}
+
+/* Main content area sizing and box model fixes */
+#main {
+    margin-left: var(--sidebar-width);
+    transition: var(--transition);
+    padding: 1.25rem;
+    min-height: 100vh;
+    width: calc(100% - var(--sidebar-width));
+    box-sizing: border-box;
+}
+
+#main.expanded { margin-left: 80px; width: calc(100% - 80px); }
+
+/* Action button styling used across admin pages */
+.btn-action {
+    background: var(--bg-card);
+    border: none;
+    box-shadow: var(--shadow);
+    border-radius: 12px;
+    width: 42px;
+    height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-main);
+    cursor: pointer;
+    transition: var(--transition);
+}
+.btn-action:hover { background: var(--accent-blue); color: white; }
+
+/* Ensure Bootstrap modals appear above the sidebar */
+.modal, .modal-backdrop { z-index: 12000 !important; }
+
+/* Sidebar responsive/off-canvas behavior */
+@media (max-width: 991.98px) {
+    #main { 
+        margin-left: 0 !important; 
+        width: 100% !important; 
+        padding: 1rem; 
+    }
+    #main.expanded { 
+        margin-left: 0 !important; 
+        width: 100% !important; 
+    }
+    #sidebar { 
+        left: calc(var(--sidebar-width) * -1); 
+        position: fixed; 
+        z-index: 1100; 
+        height: 100vh; 
+        width: var(--sidebar-width);
+        transition: var(--transition); 
+    }
+    #sidebar.show { left: 0; }
+    .sidebar-overlay {
+        display: none; 
+        position: fixed; 
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.4); 
+        z-index: 1090; 
+        backdrop-filter: blur(4px);
+    }
+    .sidebar-overlay.show { display: block; }
+}
+
+/* Utility: make responsive tables scroll nicely */
+.table-responsive { border-radius: 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* Make modal backdrop blur the screen when visible */
+/* Backdrop uses Bootstrap default translucent background; no blur applied */
+

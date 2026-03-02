@@ -1,0 +1,25 @@
+# Prevent direct access to sensitive core files
+<Files "connection.php">
+    Order allow,deny
+    Deny from all
+</Files>
+<Files "auth.php">
+    Order allow,deny
+    Deny from all
+</Files>
+<Files "supabase_config.php">
+    Order allow,deny
+    Deny from all
+</Files>
+<Files ".env">
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Disable directory listing
+Options -Indexes
+
+# Optional: Ensure HTTPS if using a domain (Uncomment if needed)
+# RewriteEngine On
+# RewriteCond %{HTTPS} off
+# RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
